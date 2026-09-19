@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Command Assist — Admin Panel</title>
+<style>
+  :root{
+    --bg:#1B1E27;
+    --surface:#242836;
+    --surface-2:#2C3142;
+    --border:#383E52;
+    --text:#EDEEF2;
+    --muted:#8B90A0;
+    --lens:#6FA8DC;
+    --amber:#E8A33D;
+    --good:#4CAF6D;
+    --bad:#E5534B;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{min-height:100vh;display:flex;justify-content:center;padding:28px 16px 60px;}
+  .wrap{width:100%;max-width:720px;}
+
+  header{margin-bottom:22px;}
+  header .eyes{font-size:34px;line-height:1;}
+  header h1{font-size:19px;margin:10px 0 2px;font-weight:600;letter-spacing:0.2px;}
+  header p{margin:0;color:var(--muted);font-size:13px;}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px;}
+  .card h2{font-size:13px;margin:0 0 12px;color:var(--muted);font-weight:600;}
+
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px;}
+  input[type=text], input[type=password], textarea, select{
+    width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    color:var(--text);padding:11px 12px;font-size:14px;font-family:var(--sans);margin-bottom:12px;
+  }
+  input:focus, textarea:focus, select:focus{outline:none;border-color:var(--lens);}
+  textarea{font-family:var(--mono);font-size:12px;min-height:90px;resize:vertical;}
+
+  button{border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  .btn-primary{background:var(--lens);color:#0F1420;width:100%;}
+  .btn-primary:disabled{opacity:0.45;cursor:not-allowed;}
+  .btn-danger{background:var(--bad);color:#1a0a08;}
+  .btn-good{background:var(--good);color:#08160c;}
+  .btn-small{padding:6px 12px;font-size:12px;border-radius:8px;white-space:nowrap;}
+
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5;margin:0 0 12px;}
+
+  .userRow{
+    display:flex;align-items:center;gap:10px;
+    border-top:1px solid var(--border);padding:10px 0;
+  }
+  .userRow:first-child{border-top:none;}
+  .userRow .idcol{flex:1;min-width:0;}
+  .userRow .id{font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .userRow .meta{font-size:11px;color:var(--muted);margin-top:2px;}
+  .badge{font-size:10.5px;padding:2px 8px;border-radius:20px;font-weight:600;flex-shrink:0;}
+  .badge.ok{background:rgba(76,175,109,0.18);color:var(--good);}
+  .badge.blocked{background:rgba(229,83,75,0.18);color:var(--bad);}
+  .empty{color:var(--muted);font-size:13px;padding:6px 0;}
+
+  .activityList{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;padding-left:0;}
+  .activityList div{padding:2px 0;border-left:2px solid var(--border);padding-left:8px;margin-bottom:2px;}
+  details summary{font-size:11.5px;color:var(--lens);cursor:pointer;margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyes">👓🔧</div>
+    <h1>Command Assist — Admin Panel</h1>
+    <p>Sab users ka shared AI key, system prompt, aur activity/block control — ek hi jagah.</p>
+  </header>
+
+  <!-- PASSWORD GATE -->
+  <div class="card" id="gateCard">
+    <h2>Admin Password</h2>
+    <p class="hint">Ye password isi file ke top wale ADMIN_PASSWORD constant se match hota hai — is file ko kisi ko share na karo jise admin access nahi dena.</p>
+    <input type="password" id="adminPasswordInput" placeholder="Admin password">
+    <button class="btn-primary" id="unlockBtn">Unlock</button>
+  </div>
+
+  <div id="panels" style="display:none;">
+
+    <!-- SHARED API CONFIG -->
+    <div class="card">
+      <h2>🔑 Shared AI Key (sab users isi se chalenge)</h2>
+      <p class="hint">Yahan ek key daal do — jis bhi device par uski apni local key set nahi hai, wo automatically isi shared key/model se chalega. Khaali chhodne se har device apni-apni local key use karta rahega.</p>
+      <input type="text" id="configApiKey" placeholder="sk-... / sk-ant-... / gsk_...">
+      <div id="configProviderLabel" class="hint" style="margin:-4px 0 8px;">Provider: —</div>
+      <select id="configModel"></select>
+      <button class="btn-primary" id="saveConfigBtn">Save Shared Key</button>
+      <button class="btn-danger" id="clearConfigBtn" style="width:100%;margin-top:8px;">Clear Shared Key (har device apni key use karega)</button>
+    </div>
+
+    <!-- SYSTEM PROMPT -->
+    <div class="card">
+      <h2>🧠 System Prompt (extra instruction, sab users ke liye)</h2>
+      <p class="hint">Ye har command ke Router Prompt ke saath jud jaata hai — turant sab devices par live ho jaata hai, app update ki zaroorat nahi.</p>
+      <textarea id="systemPromptInput" placeholder="jaise: hamesha Hindi me short jawaab do, English words avoid karo"></textarea>
+      <button class="btn-primary" id="savePromptBtn">Save System Prompt</button>
+    </div>
+    <!-- LOCAL AI CONFIG -->
+    <div class="card">
+      <h2>📱 Local AI / Mobile LM Configuration</h2>
+      <p class="hint">Enable this to run inferences entirely offline on the phone using a local model (e.g., Mobile LM Server).</p>
+      
+      <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; color:var(--text); font-size:14px;">
+        <input type="checkbox" id="localAiEnabled" style="width:auto; margin:0;">
+        Enable Local AI
+      </label>
+      
+      <label for="localAiProvider">Provider:</label>
+      <select id="localAiProvider">
+        <option value="ollama">Ollama (Compatible)</option>
+      </select>
+      
+      <label for="localAiModel">Model:</label>
+      <input type="text" id="localAiModel" placeholder="Supra-50M-Instruct" value="Supra-50M-Instruct">
+      
+      <label for="localAiPort">Port:</label>
+      <input type="text" id="localAiPort" placeholder="11434" value="11434">
+      
+      <label for="localAiEndpoint">Endpoint:</label>
+      <input type="text" id="localAiEndpoint" placeholder="/api/chat" value="/api/chat">
+      
+      <label for="localAiTemp">Temperature:</label>
+      <input type="text" id="localAiTemp" placeholder="0.7" value="0.7">
+      
+      <button class="btn-primary" id="saveLocalAiBtn">Save Local AI Config</button>
+    </div>
+
+    <!-- USERS -->
+    <div class="card">
+      <h2>👥 Users &amp; Activity</h2>
+      <p class="hint">Har device ka apna random ID hai (naam/number nahi). "Block" karne se us device par koi bhi command (typed/voice/remote) chalna band ho jaata hai.</p>
+      <div id="usersList"><div class="empty">Loading...</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ====================================================================
+  // 🔒 CONFIG LOCKER — same Firebase project jo app aur remote-control.html
+  // use karte hain. Isko badalne ki zaroorat nahi jab tak project change na ho.
+  // ====================================================================
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCcNIzoBaITfVxfu6mT2FQMOymSQupp75A",
+    authDomain: "gxduty.firebaseapp.com",
+    databaseURL: "https://gxduty-default-rtdb.firebaseio.com",
+    projectId: "gxduty",
+    storageBucket: "gxduty.firebasestorage.app",
+    messagingSenderId: "633387339345",
+    appId: "1:633387339345:web:ca43c331f00bf0ab2cf270",
+    measurementId: "G-ZM2GTHNHX8"
+  };
+
+  // 🔒 Apna admin password yahan badlo (default: "tsedio-admin"). Ye sirf is
+  // browser-tab me check hota hai — asli data-security Firebase Rules par hai.
+  var ADMIN_PASSWORD = "tsedio-admin";
+  // ====================================================================
+
+  var MODELS_BY_PROVIDER = {
+    openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-3.5-turbo"],
+    claude: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"],
+    groq: ["openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
+  };
+
+  function detectProvider(key){
+    if (!key) return "";
+    var k = key.trim();
+    if (k.indexOf("sk-ant-") === 0) return "claude";
+    if (k.indexOf("gsk_") === 0) return "groq";
+    if (k.indexOf("sk-") === 0) return "openai";
+    return "";
+  }
+  function providerLabel(p){
+    if (p === "openai") return "OpenAI";
+    if (p === "claude") return "Claude (Anthropic)";
+    if (p === "groq") return "Groq (free tier available)";
+    return "Unknown";
+  }
+
+  var gateCard = document.getElementById("gateCard");
+  var panels = document.getElementById("panels");
+  var adminPasswordInput = document.getElementById("adminPasswordInput");
+  var unlockBtn = document.getElementById("unlockBtn");
+
+  var configApiKey = document.getElementById("configApiKey");
+  var configProviderLabel = document.getElementById("configProviderLabel");
+  var configModel = document.getElementById("configModel");
+  var saveConfigBtn = document.getElementById("saveConfigBtn");
+  var clearConfigBtn = document.getElementById("clearConfigBtn");
+
+  var systemPromptInput = document.getElementById("systemPromptInput");
+  var savePromptBtn = document.getElementById("savePromptBtn");
+
+  var usersList = document.getElementById("usersList");
+
+  var db = null;
+
+  function initFirebase(){
+    try { firebase.initializeApp(FIREBASE_CONFIG); } catch(e){}
+    db = firebase.database();
+    firebase.auth().signInAnonymously();
+  }
+
+  unlockBtn.addEventListener("click", function(){
+    if (adminPasswordInput.value === ADMIN_PASSWORD){
+      gateCard.style.display = "none";
+      panels.style.display = "block";
+      initFirebase();
+      loadAdminConfig();
+      loadUsers();
+    } else {
+      alert("Galat password.");
+    }
+  });
+  adminPasswordInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter") unlockBtn.click();
+  });
+
+  // ---------- Shared API config ----------
+
+  function populateModelSelect(provider, selected){
+    var models = MODELS_BY_PROVIDER[provider] || [];
+    configModel.innerHTML = "";
+    models.forEach(function(m){
+      var opt = document.createElement("option");
+      opt.value = m; opt.textContent = m;
+      if (m === selected) opt.selected = true;
+      configModel.appendChild(opt);
+    });
+    configModel.disabled = models.length === 0;
+  }
+
+  configApiKey.addEventListener("input", function(){
+    var p = detectProvider(configApiKey.value);
+    configProviderLabel.textContent = "Provider: " + (p ? providerLabel(p) : "—");
+    populateModelSelect(p, null);
+  });
+
+  function loadAdminConfig(){
+    db.ref("admin/config").once("value").then(function(snap){
+      var val = snap.val() || {};
+      configApiKey.value = val.apiKey || "";
+      var p = val.provider || detectProvider(val.apiKey || "");
+      configProviderLabel.textContent = "Provider: " + (p ? providerLabel(p) : "—");
+      populateModelSelect(p, val.model || null);
+    });
+    db.ref("admin/systemPrompt").once("value").then(function(snap){
+      systemPromptInput.value = snap.val() || "";
+    });
+    db.ref("admin/local_ai").once("value").then(function(snap){
+      var val = snap.val() || {};
+      document.getElementById("localAiEnabled").checked = !!val.enabled;
+      if (val.provider) document.getElementById("localAiProvider").value = val.provider;
+      if (val.model) document.getElementById("localAiModel").value = val.model;
+      if (val.port) document.getElementById("localAiPort").value = val.port;
+      if (val.endpoint) document.getElementById("localAiEndpoint").value = val.endpoint;
+      if (val.temperature) document.getElementById("localAiTemp").value = val.temperature;
+    });
+  }
+
+  saveConfigBtn.addEventListener("click", function(){
+    var key = configApiKey.value.trim();
+    var provider = detectProvider(key);
+    var model = configModel.value || "";
+    if (key && !provider){
+      alert("Ye key ka format samajh nahi aaya (OpenAI 'sk-', Claude 'sk-ant-', Groq 'gsk_').");
+      return;
+    }
+    db.ref("admin/config").set({apiKey: key, provider: provider, model: model}).then(function(){
+      alert("Saved — sab devices turant isi key/model se chalne lagenge.");
+    });
+  });
+
+  clearConfigBtn.addEventListener("click", function(){
+    if (!confirm("Shared key clear karni hai? Har device apni local key use karega.")) return;
+    db.ref("admin/config").set({apiKey: "", provider: "", model: ""}).then(function(){
+      configApiKey.value = "";
+      configProviderLabel.textContent = "Provider: —";
+      populateModelSelect("", null);
+      alert("Shared key clear ho gayi.");
+    });
+  });
+
+  savePromptBtn.addEventListener("click", function(){
+    db.ref("admin/systemPrompt").set(systemPromptInput.value || "").then(function(){
+      alert("System prompt saved — turant sab devices par live ho gaya.");
+    });
+  });
+
+  document.getElementById("saveLocalAiBtn").addEventListener("click", function(){
+    var config = {
+      enabled: document.getElementById("localAiEnabled").checked,
+      provider: document.getElementById("localAiProvider").value,
+      model: document.getElementById("localAiModel").value.trim(),
+      port: parseInt(document.getElementById("localAiPort").value.trim(), 10) || 11434,
+      endpoint: document.getElementById("localAiEndpoint").value.trim(),
+      temperature: parseFloat(document.getElementById("localAiTemp").value.trim()) || 0.7
+    };
+    db.ref("admin/local_ai").set(config).then(function(){
+      alert("Local AI Configuration saved!");
+    }).catch(function(err){
+      alert("Error saving: " + err.message);
+    });
+  });
+
+  // ---------- Users list ----------
+
+  function timeAgo(ts){
+    if (!ts) return "kabhi nahi";
+    var diff = Date.now() - ts;
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return "abhi";
+    if (mins < 60) return mins + " min pehle";
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + " hour pehle";
+    return Math.floor(hrs / 24) + " din pehle";
+  }
+
+  function renderUsers(usersObj){
+    usersList.innerHTML = "";
+    var ids = Object.keys(usersObj || {});
+    if (ids.length === 0){
+      usersList.innerHTML = '<div class="empty">Abhi tak koi device connect nahi hua.</div>';
+      return;
+    }
+    // Sabse recently active user sabse upar.
+    ids.sort(function(a, b){
+      return (usersObj[b].lastSeen || 0) - (usersObj[a].lastSeen || 0);
+    });
+    ids.forEach(function(id){
+      var u = usersObj[id] || {};
+      var blocked = !!u.blocked;
+      var row = document.createElement("div");
+      row.className = "userRow";
+
+      var idcol = document.createElement("div");
+      idcol.className = "idcol";
+      var idLine = document.createElement("div");
+      idLine.className = "id";
+      idLine.textContent = id;
+      var metaLine = document.createElement("div");
+      metaLine.className = "meta";
+      metaLine.textContent = "Last seen: " + timeAgo(u.lastSeen);
+      idcol.appendChild(idLine);
+      idcol.appendChild(metaLine);
+
+      if (u.activity){
+        var entries = Object.values(u.activity).sort(function(a,b){ return (b.ts||0)-(a.ts||0); }).slice(0,5);
+        if (entries.length){
+          var details = document.createElement("details");
+          var summary = document.createElement("summary");
+          summary.textContent = "Recent activity (" + entries.length + ")";
+          var list = document.createElement("div");
+          list.className = "activityList";
+          entries.forEach(function(e){
+            var line = document.createElement("div");
+            line.textContent = new Date(e.ts).toLocaleTimeString() + " — " + e.command;
+            list.appendChild(line);
+          });
+          details.appendChild(summary);
+          details.appendChild(list);
+          idcol.appendChild(details);
+        }
+      }
+
+      var badge = document.createElement("span");
+      badge.className = "badge " + (blocked ? "blocked" : "ok");
+      badge.textContent = blocked ? "BLOCKED" : "OK";
+
+      var toggleBtn = document.createElement("button");
+      toggleBtn.className = "btn-small " + (blocked ? "btn-good" : "btn-danger");
+      toggleBtn.textContent = blocked ? "Unblock" : "Block";
+      toggleBtn.addEventListener("click", function(){
+        db.ref("users/" + id + "/blocked").set(!blocked);
+      });
+
+      row.appendChild(idcol);
+      row.appendChild(badge);
+      row.appendChild(toggleBtn);
+      usersList.appendChild(row);
+    });
+  }
+
+  function loadUsers(){
+    db.ref("users").on("value", function(snap){
+      renderUsers(snap.val());
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
